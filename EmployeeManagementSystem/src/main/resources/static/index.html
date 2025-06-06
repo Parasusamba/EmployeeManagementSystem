@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body.dark-mode {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .sidebar {
+            height: 100vh;
+            position: fixed;
+            top: 56px;
+            left: 0;
+            width: 200px;
+            background-color: #f8f9fa;
+            padding-top: 1rem;
+        }
+        .sidebar a {
+            display: block;
+            padding: 0.75rem;
+            color: #333;
+            text-decoration: none;
+        }
+        .sidebar a:hover {
+            background-color: #ddd;
+        }
+        .sidebar a:focus {
+            background-color: #ddd;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: static;
+                width: 100%;
+                height: auto;
+            }
+        }
+        main {
+            margin-left: 200px;
+            padding: 1rem;
+        }
+        @media (max-width: 768px) {
+            main {
+                margin-left: 0;
+            }
+        }
+         /* table th, table td {
+           white-space: normal !important;
+		    word-wrap: break-word;         
+		    word-break: normal;              
+		    overflow-wrap: anywhere;
+        }  */
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Employee Management</a>
+            <button class="btn btn-outline-light" id="themeToggle">Toggle Theme</button>
+        </div>
+    </nav>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <a href="#" data-op="list">List Employees</a>
+        <a href="#" data-op="add">Add Employee</a>
+        <a href="#" data-op="update">Update Employee</a>
+        <a href="#" data-op="delete">Delete Employee</a>
+        <a href="#" data-op="dashboard">Dashboard</a>
+        
+    </div>
+    
+
+    <!-- Main Content -->
+    <main>
+        <h2 id="sectionTitle">Employee List</h2>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="searchInput" placeholder="Search employees...">
+        </div>
+        <button class="btn btn-success mb-3" onclick="exportToCSV()">Export to CSV</button>
+        <div id="operationSection"></div>
+    </main>
+
+    <!-- Modals -->
+    <div class="modal fade" id="employeeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="modalForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalTitle"></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="modalBody"></div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary" id="modalSubmitBtn">Submit</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+     <script>
+    const apiBase = 'http://localhost:8080/api/employees/';
+    const sectionTitle = document.getElementById('sectionTitle');
+    const operationSection = document.getElementById('operationSection');
+    const searchInput = document.getElementById('searchInput');
+    const modal = new bootstrap.Modal(document.getElementById('employeeModal'));
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    const modalForm = document.getElementById('modalForm');
+    const modalSubmitBtn = document.getElementById('modalSubmitBtn');
+    
+    document.querySelectorAll('.sidebar a').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const op = link.getAttribute('data-op');
+            sectionTitle.textContent = link.textContent;
+            if (op === 'list') listEmployeesUI();
+            else if (op === 'dashboard') showDashboard();
+            else openModal(op);
+        });
+    });
+
+
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+    });
+
+    searchInput.addEventListener('input', () => {
+      const filter = searchInput.value.toLowerCase();
+      document.querySelectorAll('#operationSection tbody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(filter) ? '' : 'none';
+      });
+    });
+
+    async function listEmployeesUI() {
+      try {
+        const res = await fetch(apiBase);
+        if (!res.ok) throw new Error('Failed to fetch employees');
+        const employees = await res.json();
+        let html = '<table class="table table-striped"><thead><tr>' +
+          '<th>ID</th><th>First Name</th><th>Last Name</th><th>Email</th><th>Job Title</th><th>Department</th><th>Salary</th><th>Date of Joining</th><th>Status</th></tr></thead><tbody>';
+        employees.forEach(emp => {
+          html += `<tr><td>${emp.id}</td><td>${emp.firstName}</td><td>${emp.lastName}</td><td>${emp.email}</td><td>${emp.jobTitle}</td><td>${emp.department}</td><td>${emp.salary}</td><td>${emp.dateOfJoining}</td><td>${emp.status}</td></tr>`;
+        });
+        html += '</tbody></table>';
+        operationSection.innerHTML = html;
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    function openModal(op) {
+      modalForm.onsubmit = async (e) => {
+        e.preventDefault();
+        if (op === 'add') await addEmployee();
+        if (op === 'update') await updateEmployee();
+        if (op === 'delete') await deleteEmployee();
+        modal.hide();
+        listEmployeesUI();
+      };
+
+      if (op === 'add') {
+        modalTitle.textContent = 'Add New Employee';
+        modalSubmitBtn.textContent = 'Add';
+        modalBody.innerHTML = getEmployeeFields();
+      } else if (op === 'update') {
+        modalTitle.textContent = 'Update Employee';
+        modalSubmitBtn.textContent = 'Update';
+        modalBody.innerHTML = `<input type="number" class="form-control mb-2" id="id" placeholder="Employee ID" required>` + getEmployeeFields();
+      } else if (op === 'delete') {
+        modalTitle.textContent = 'Delete Employee';
+        modalSubmitBtn.textContent = 'Delete';
+        modalBody.innerHTML = `<input type="number" class="form-control" id="id" placeholder="Employee ID" required>`;
+      }
+
+      modal.show();
+    }
+
+    function getEmployeeFields() {
+      return `
+        <input type="text" class="form-control mb-2" id="firstName" placeholder="First Name">
+        <input type="text" class="form-control mb-2" id="lastName" placeholder="Last Name">
+        <input type="email" class="form-control mb-2" id="email" placeholder="Email">
+        <input type="text" class="form-control mb-2" id="jobTitle" placeholder="Job Title">
+        <input type="text" class="form-control mb-2" id="department" placeholder="Department">
+        <input type="number" step="0.01" class="form-control mb-2" id="salary" placeholder="Salary">
+        <input type="date" class="form-control mb-2" id="dateOfJoining" placeholder="Date of Joining">
+        <input type="text" class="form-control mb-2" id="status" placeholder="Status">
+      `;
+    }
+
+    function getFormData() {
+      const data = {};
+      const fields = [
+        { id: 'firstName', type: 'text' },
+        { id: 'lastName', type: 'text' },
+        { id: 'email', type: 'email' },
+        { id: 'jobTitle', type: 'text' },
+        { id: 'department', type: 'text' },
+        { id: 'salary', type: 'number' },
+        { id: 'dateOfJoining', type: 'date' },
+        { id: 'status', type: 'text' }
+      ];
+
+      fields.forEach(field => {
+        const value = document.getElementById(field.id).value.trim();
+        if (value !== '') {
+          data[field.id] = field.type === 'number' ? parseFloat(value) : value;
+        }
+      });
+
+      return data;
+    }
+
+    async function addEmployee() {
+      const employee = getFormData();
+      try {
+        const res = await fetch(apiBase, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(employee)
+        });
+        if (!res.ok) throw new Error('Failed to add employee');
+        alert('Employee added!');
+      } catch (error) {
+        alert("Error: " + error.message);
+      }
+    }
+
+    async function updateEmployee() {
+      const id = document.getElementById('id').value.trim();
+      if (!id) {
+        alert("Please enter a valid Employee ID.");
+        return;
+      }
+
+      try {
+        const resGet = await fetch(apiBase + id);
+        if (resGet.status === 404) {
+          alert("Employee with this ID was not found.");
+          return;
+        }
+        if (!resGet.ok) throw new Error("Failed to fetch employee data.");
+
+        const existingData = await resGet.json();
+        const updatedFields = getFormData();
+
+        const fullData = {
+          firstName: updatedFields.firstName ?? existingData.firstName,
+          lastName: updatedFields.lastName ?? existingData.lastName,
+          email: updatedFields.email ?? existingData.email,
+          jobTitle: updatedFields.jobTitle ?? existingData.jobTitle,
+          department: updatedFields.department ?? existingData.department,
+          salary: updatedFields.salary ?? existingData.salary,
+          dateOfJoining: updatedFields.dateOfJoining ?? existingData.dateOfJoining,
+          status: updatedFields.status ?? existingData.status
+        };
+
+        const resPut = await fetch(apiBase + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullData)
+        });
+
+        if (!resPut.ok) {
+          const msg = await resPut.text();
+          throw new Error(msg);
+        }
+
+        alert("Employee updated successfully!");
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    }
+
+    async function deleteEmployee() {
+      const id = document.getElementById('id').value.trim();
+      if (!id) {
+        alert("Please enter a valid Employee ID.");
+        return;
+      }
+
+      try {
+        const res = await fetch(apiBase + id, { method: 'DELETE' });
+        if (res.status === 404) {
+          alert("Employee with this ID was not found.");
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to delete employee");
+        alert("Employee deleted successfully!");
+      } catch (error) {
+        alert("Error: " + error.message);
+      }
+    }
+    
+    async function exportToCSV() {
+        try {
+            const res = await fetch(apiBase);
+            if (!res.ok) throw new Error('Failed to fetch employees');
+            const employees = await res.json();
+
+            // Filter out inactive employees
+            const activeEmployees = employees.filter(emp => emp.status.toLowerCase() !== 'inactive');
+
+            if (activeEmployees.length === 0) {
+                alert('No active employees to export.');
+                return;
+            }
+
+            const headers = ["ID", "First Name", "Last Name", "Email", "Job Title", "Department", "Salary", "Date of Joining", "Status"];
+            const rows = activeEmployees.map(emp => [
+                emp.id,
+                emp.firstName,
+                emp.lastName,
+                emp.email,
+                emp.jobTitle,
+                emp.department,
+                emp.salary,
+                emp.dateOfJoining,
+                emp.status
+            ]);
+
+            let csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows]
+                .map(e => e.map(field => `"${String(field).replace(/"/g, '""')}"`).join(","))
+                .join("\n");
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "employees.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+
+    
+    async function showDashboard() {
+        try {
+            const res = await fetch(apiBase);
+            if (!res.ok) throw new Error('Failed to fetch employee data');
+            const employees = await res.json();
+
+            // Filter out inactive
+            const activeEmployees = employees.filter(emp => emp.status.toLowerCase() !== 'inactive');
+
+            // Department-wise count
+            const deptCounts = {};
+            activeEmployees.forEach(emp => {
+                deptCounts[emp.department] = (deptCounts[emp.department] || 0) + 1;
+            });
+
+            // Status count
+            const statusCounts = {};
+            employees.forEach(emp => {
+                statusCounts[emp.status] = (statusCounts[emp.status] || 0) + 1;
+            });
+
+            operationSection.innerHTML = `
+            	 <div class="d-flex justify-content-center">
+                	<canvas id="departmentChart" style="max-width: 1000px; width: 100%;max-height: 600px"></canvas>
+            	</div>                
+            	<div class="d-flex justify-content-center mt-4">
+                    <canvas id="statusChart" style="max-width: 500px; width: 100%;max-height: 500px; height: 500px;"></canvas>
+                </div>
+            `;
+
+
+            // Bar Chart - Department
+            new Chart(document.getElementById('departmentChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(deptCounts),
+                    datasets: [{
+                        label: 'Employees per Department',
+                        data: Object.values(deptCounts),
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        title: {
+                            display: true,
+                            text: 'Employees by Department'
+                        }
+                    }
+                }
+            });
+
+            // Pie Chart - Status
+            new Chart(document.getElementById('statusChart'), {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(statusCounts),
+                    datasets: [{
+                        label: 'Employees by Status',
+                        data: Object.values(statusCounts),
+                        backgroundColor: ['#28a745', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Employees by Status'
+                        }
+                    }
+                
+                }
+            });
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+
+
+    window.addEventListener('load', listEmployeesUI);
+  </script>
+</body>
+</html>
